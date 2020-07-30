@@ -2,70 +2,115 @@
 
     import { onMount } from 'svelte'
 
-    let min = 0;
-    let max = 100;
+    export let min = 0
+    export let max = 9
+    export let value = min
+    export let itemWidth = 0.1
+    export let gapWidth = 0.05
+
     let options = [];
-    let dragging = false;
-    let mouseStart = 0;
     let wrapRef = null
     let ulRef = null;
-    let trans = 0;
-    let selected = 0;
-    let item_width = 0.1;
-    let gap_width = 0.05;
-    for (let i = min; i < max; i++) options.push(i);
+    for (let i = min; i <= max; i++) options.push(i);
 
+    // state used for dragging
+    let dragging = false
+    let dragStartX = 0
+    let translateX = 0
+    let translateOldX = 0
+    let ignoreClick = false
 
-    function calcSelected (pos) {
-        let total_px = wrapRef.getBoundingClientRect().width
-        let item_px = total_px * item_width
-        let gap_px = total_px * gap_width
-        let midpoint_px = total_px*0.5
-        selected = Math.floor((midpoint_px - pos) / (item_px + gap_px))
+    // sizes used for calculations
+    let total_px
+    let item_px
+    let gap_px
+    let midpoint_px
+
+    function calcSizes () {
+        total_px    = wrapRef.getBoundingClientRect().width
+        item_px     = total_px * itemWidth
+        gap_px      = total_px * gapWidth
+        midpoint_px = total_px * 0.5
     }
 
-    function snap() {
-        let total_px = wrapRef.getBoundingClientRect().width
-        let item_px = total_px * item_width
-        let gap_px = total_px * gap_width
-        let midpoint_px = total_px*0.5
-        selected = Math.floor((midpoint_px - trans) / (item_px + gap_px))
-        let pos = selected * (item_px + gap_px) + 0.5 * (item_px + gap_px) + trans
-        let snap = midpoint_px - pos
-        trans += snap
-        ulRef.style.setProperty('transform', 'translate(' + trans.toString() + 'px)')
-        ulRef.style.setProperty('transition', '0.1s ease')
+    function calcSelected () {
+        return Math.floor((midpoint_px - translateX) / (item_px + gap_px))
+    }
+
+    function translate (x) {
+        let prop = `translate(${ x.toString() }px)`
+        ulRef.style.setProperty('transform', prop)
+    }
+
+    function snap(ndx) {
+        translateX = midpoint_px - (ndx + 0.5)*(item_px + gap_px)
+        translate(translateX)
+        ulRef.style.setProperty('transition', '0.2s ease')
+    }
+
+    // dont allow user to scroll past bounds
+    function bound(x) {
+        const right = midpoint_px
+        const left = midpoint_px - (item_px + gap_px) * options.length + 1
+        if (x > right) return right
+        else if (x < left) return left
+        else return x
     }
 
     function dragStart(event) {
         dragging = true;
-        mouseStart = event.clientX;
+        dragStartX = event.clientX || event.touches[0].clientX;
+        translateOldX = translateX
         ulRef.style.setProperty('transition', 'none')
+        calcSizes()
     }
 
     function dragSlide(event) {
-        if (dragging) {
-            let x = event.clientX;
-            let diff = x - mouseStart;
-            let pos = trans + diff;
-            ulRef.style.setProperty(
-                "transform",
-                "translate(" + pos.toString() + "px)"
-            )
-            calcSelected(pos)
-        }
+        if (!dragging) return
+        const clientX = event.clientX || event.touches[0].clientX
+        let delta = clientX - dragStartX;
+        translateX = bound(translateOldX + delta)
+        translate(translateX)
+        let ndx = calcSelected()
+        value = options[ndx]
     }
 
     function dragStop(event) {
-        if (dragging) {
-            let mouseEnd = event.clientX
-            trans = trans + mouseEnd - mouseStart
-            dragging = false
-            snap()
+        if (!dragging) return
+        dragging = false
+        const ndx = calcSelected()
+        if (Math.abs(translateX - translateOldX) > 10) ignoreClick = true
+        snap(ndx)
+    }
+
+    function increment () {
+        calcSizes();
+        const ndx = calcSelected() + 1
+        value = options[ndx]
+        snap(ndx)
+    }
+
+    function decrement () {
+        calcSizes()
+        const ndx = calcSelected() - 1
+        value = options[ndx]
+        snap(ndx)
+    }
+
+    function select(ndx) {
+        if (ignoreClick) {
+            ignoreClick = false
+        }
+        else {
+            value = options[ndx]
+            snap(ndx)
         }
     }
 
-    onMount(snap)
+    onMount(() => {
+        calcSizes()
+        snap(0)
+    })
 
 </script>
 
@@ -73,8 +118,7 @@
 
     .container {
         display: flex;
-        align-items: center;
-        position: relative;
+        font-size: 1.5rem;
     }
 
     .line {
@@ -86,21 +130,25 @@
     }
 
     .arrow {
-        width: 15%;
+        width: 10%;
+        line-height: 1.5rem;
+    }
+
+    .arrow:hover {
+        cursor: pointer;
     }
 
     .wrap {
         overflow: hidden;
-        border: 0px solid blue;
-        height: 50px;
-
+        border: none;
+        flex-grow: 1;
+        padding: 0em 0;
     }
 
     ul {
         list-style: none;
         padding: 0;
         margin: 0;
-        flex-grow: 1;
         white-space: nowrap;
         overflow: visible;
         height: 100%;
@@ -108,25 +156,39 @@
 
     li {
         display: inline-block;
+        vertical-align: middle;
         width: var(--item-width);
-        height: 100%;
         margin: 0 calc(0.5 * var(--gap-width));
-    }
-
-    li + li {
+        text-align: center;
+        padding: 1em 0;
     }
 
     button {
         width: 100%;
         margin: 0;
         text-align: center;
+        font-size: inherit;
+        font-family: inherit;
+        border: none;
+        padding: 5px;
+        background: transparent;
     }
+
+    button:focus {
+        outline: none;
+    }
+
 </style>
 
-<div class="container" style="--item-width: {item_width*100}%; --gap-width: {gap_width*100}%">
+<div class="container" style="--item-width: {itemWidth*100}%; --gap-width: {gapWidth*100}%">
 
     <div class='line'></div>
-    <div class="left arrow">L</div>
+
+    <button
+        class="left arrow"
+        on:click={decrement}
+        disabled={value===min}
+    >&#60;</button>
 
     <div
         class="wrap"
@@ -135,17 +197,24 @@
         on:mousemove={dragSlide}
         on:mouseup={dragStop}
         on:mouseleave={dragStop}
+        on:touchstart={dragStart}
+        on:touchmove={dragSlide}
+        on:touchend={dragStop}
+        on:touchcancel={dragStop}
     >
         <ul bind:this={ulRef}>
-            {#each options as option}
-                <li>
-                    <button>{option}</button>
+            {#each options as option, i}
+                <li on:click={() => select(i)}>
+                    {option}
                 </li>
             {/each}
         </ul>
     </div>
-    <div class="right arrow">R</div>
+
+    <button
+        class="right arrow"
+        on:click={increment}
+        disabled={value===max}
+    >&#62;</button>
 
 </div>
-
-<p>Selected: {selected}</p>
